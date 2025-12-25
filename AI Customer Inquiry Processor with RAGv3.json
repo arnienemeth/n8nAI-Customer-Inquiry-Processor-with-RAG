@@ -1,0 +1,928 @@
+{
+  "name": "AI Customer Inquiry Processor with RAGv3",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "readStatus": "unread"
+        }
+      },
+      "id": "3ce295ec-ecaf-4b04-a6be-d0bdc2b49593",
+      "name": "Gmail Trigger - New Inquiry",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -224,
+        160
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "rHCV1HlRrfN4uNk6",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1thL70VD8clVzDNGbunyulBFi41IxZn9PHJNg4pxyBxY",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "knowledge-base-template",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "2ba5da09-b778-49f8-a23c-c3af6015f8ee",
+      "name": "Google Sheets - Read Knowledge Base",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "HMz6UdPG2jdyM31k",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1yTvA9M9KUVolduO13ZgBXV8nX-b9muAd45ZU7UskcvY",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "faq-template",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "79f33ffd-d10b-43de-91d0-462df1ed3956",
+      "name": "Google Sheets - Read FAQ",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        0,
+        160
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "HMz6UdPG2jdyM31k",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1buba7gIMumwfs62aohARDPlzVS1g2SpeDJ-H6bEYxew",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "products-template",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "910eeffb-4452-4e07-88d2-9e4bfce79682",
+      "name": "Google Sheets - Read Products",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        0,
+        320
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "HMz6UdPG2jdyM31k",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "2f4310e6-e8f8-4d75-9171-1780f8fd23ec",
+      "name": "Merge All Context Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        224,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine all knowledge base data into a structured context\nconst items = $input.all();\n\nlet knowledgeBase = [];\nlet faqData = [];\nlet productData = [];\n\nfor (const item of items) {\n  const data = item.json;\n  \n  // Categorize based on available fields\n  if (data.category && data.answer) {\n    faqData.push({\n      question: data.question || '',\n      answer: data.answer,\n      category: data.category\n    });\n  } else if (data.product_name && data.price) {\n    productData.push({\n      name: data.product_name,\n      description: data.description || '',\n      price: data.price,\n      availability: data.availability || 'In Stock',\n      sku: data.sku || ''\n    });\n  } else if (data.topic && data.content) {\n    knowledgeBase.push({\n      topic: data.topic,\n      content: data.content,\n      keywords: data.keywords || ''\n    });\n  }\n}\n\n// Get the original email data from the trigger\nconst emailData = $('Gmail Trigger - New Inquiry').item.json;\n\nreturn [{\n  json: {\n    email: {\n      from: emailData.from?.emailAddress || emailData.from,\n      subject: emailData.subject,\n      body: emailData.text || emailData.snippet,\n      threadId: emailData.threadId,\n      messageId: emailData.id,\n      receivedAt: emailData.date\n    },\n    context: {\n      knowledgeBase: knowledgeBase,\n      faq: faqData,\n      products: productData\n    }\n  }\n}];"
+      },
+      "id": "997a0d75-99f7-477a-ab4e-49c5f4adf504",
+      "name": "Prepare RAG Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are an AI email classifier for a customer service system. Analyze the incoming email and classify it.\n\nClassify into one of these categories:\n- PRODUCT_INQUIRY: Questions about products, pricing, features\n- SUPPORT_REQUEST: Technical issues, problems, complaints\n- ORDER_STATUS: Questions about existing orders, shipping, delivery\n- GENERAL_QUESTION: General information requests\n- PARTNERSHIP: Business partnership or collaboration requests\n- SPAM: Irrelevant or spam emails\n\nAlso determine:\n- Priority: HIGH, MEDIUM, LOW\n- Sentiment: POSITIVE, NEUTRAL, NEGATIVE\n- Key topics mentioned (as array)\n\nRespond ONLY with valid JSON in this format:\n{\n  \"category\": \"CATEGORY_NAME\",\n  \"priority\": \"PRIORITY_LEVEL\",\n  \"sentiment\": \"SENTIMENT\",\n  \"topics\": [\"topic1\", \"topic2\"],\n  \"summary\": \"Brief one-line summary of the inquiry\"\n}",
+              "role": "system"
+            },
+            {
+              "content": "=Classify this email:\n\nFrom: {{ $json.email.from }}\nSubject: {{ $json.email.subject }}\nBody: {{ $json.email.body }}"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 500,
+          "temperature": 0.3
+        }
+      },
+      "id": "db0ba0b8-07d2-437d-852f-a5226634d18c",
+      "name": "OpenAI - Classify Email",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        672,
+        160
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "UisEeNAE3fcnIyFa",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst previousData = $('Prepare RAG Context').first().json;\n\n// Parse the classification response\nlet classification;\ntry {\n  const content = input.message?.content || input.choices?.[0]?.message?.content || input.text || JSON.stringify(input);\n  classification = JSON.parse(content);\n} catch (e) {\n  classification = {\n    category: 'GENERAL_QUESTION',\n    priority: 'MEDIUM',\n    sentiment: 'NEUTRAL',\n    topics: [],\n    summary: 'Unable to classify'\n  };\n}\n\nreturn [{\n  json: {\n    ...previousData,\n    classification: classification\n  }\n}];"
+      },
+      "id": "9751b778-5204-4a22-b119-cc67da80c827",
+      "name": "Parse Classification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "spam-filter",
+              "leftValue": "={{ $json.classification.category }}",
+              "rightValue": "SPAM",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b15624a7-b100-4c76-8279-b7e8e033a862",
+      "name": "Filter Spam",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        1056,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a helpful, professional customer service AI assistant. Your task is to draft a response to customer inquiries using the provided knowledge base, FAQ, and product information.\n\nCRITICAL INSTRUCTIONS:\n1. Answer EVERY question the customer asks - do not skip any\n2. If the customer asks multiple questions, number your answers clearly\n3. Use information from the provided FAQ and context to answer\n4. If you cannot find an answer in the provided context, say \"I'll need to check with our team on this and get back to you\"\n5. NEVER skip a question - always acknowledge each one\n\nRESPONSE FORMAT:\n- Start with a greeting and acknowledge their main concern\n- Answer each question they asked (number them if multiple)\n- Be concise but complete\n- End with an offer to help further\n- Sign off professionally\n\nTONE:\n- Professional and friendly\n- Match the customer's sentiment (if frustrated, be empathetic)\n- Keep it warm but efficient",
+              "role": "system"
+            },
+            {
+              "content": "=Generate a response for this customer inquiry:\n\n---\nEMAIL DETAILS:\nFrom: {{ $json.email.from }}\nSubject: {{ $json.email.subject }}\nBody: {{ $json.email.body }}\n\n---\nCLASSIFICATION:\nCategory: {{ $json.classification.category }}\nPriority: {{ $json.classification.priority }}\nSentiment: {{ $json.classification.sentiment }}\nTopics: {{ $json.classification.topics }}\nSummary: {{ $json.classification.summary }}\n\n---\nFAQ DATABASE (use this to answer questions):\n{{ JSON.stringify($json.context.faq, null, 2) }}\n\n---\nPRODUCT CATALOG:\n{{ JSON.stringify($json.context.products, null, 2) }}\n\n---\nIMPORTANT: The customer asked multiple questions. Make sure you answer ALL of them using the FAQ database above. Number each answer."
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 1500,
+          "temperature": 0.5
+        }
+      },
+      "id": "0c483969-b2a5-4a0e-ad9b-3873d045a826",
+      "name": "OpenAI - Generate Response",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1184,
+        -240
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "UisEeNAE3fcnIyFa",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\n// Try to get previous data, use fallback for testing\nlet previousData;\ntry {\n  previousData = $('Parse Classification').first().json;\n} catch (e) {\n  // Fallback test data when running node in isolation\n  previousData = {\n    email: {\n      from: \"test@example.com\",\n      subject: \"Test Subject\",\n      body: \"This is a test email body\",\n      threadId: \"thread123\",\n      messageId: \"msg123\",\n      receivedAt: new Date().toISOString()\n    },\n    classification: {\n      category: \"PRODUCT_INQUIRY\",\n      priority: \"MEDIUM\",\n      sentiment: \"NEUTRAL\",\n      topics: [\"pricing\", \"availability\"],\n      summary: \"Test inquiry about product\"\n    },\n    context: {\n      knowledgeBase: [],\n      faq: [],\n      products: []\n    }\n  };\n}\n\n// Extract the generated response\nconst generatedResponse = input.message?.content || \n                          input.choices?.[0]?.message?.content || \n                          input.text || \n                          'Thank you for contacting us. We will get back to you shortly.';\n\nreturn [{\n  json: {\n    ...previousData,\n    generatedResponse: generatedResponse,\n    processedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "d4aec6e3-9989-4007-b544-b89ebdc5ed7e",
+      "name": "Prepare Final Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "=arni.nemeth@gmail.com",
+        "subject": "=Re: {{ $json.email.subject }}",
+        "message": "={{ $json.generatedResponse }}",
+        "options": {}
+      },
+      "id": "a4e8ebef-555a-45fa-8fb1-be33c206ce11",
+      "name": "Gmail - Create Draft Response",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1760,
+        0
+      ],
+      "webhookId": "2ab73579-0ba0-4ff9-85f1-d91657e6b8e3",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "rHCV1HlRrfN4uNk6",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "driveId": "=My Drive",
+        "folderId": "=1Oaano3cql78xJJXEQ4WNjjxDdwSGblAz",
+        "title": "=Case Report - {{ $json.classification.category }} - {{ $now.format('yyyy-MM-dd') }}"
+      },
+      "id": "9ac364e6-848e-41f0-a720-372f832b0c0a",
+      "name": "Google Docs - Generate Case Report",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        160
+      ],
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "mhJSH6FnMbnAi0ig",
+          "name": "Google Docs account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1o9tJ70loA81prhjIS0X0AdIULYHQA6xpEpu49c9oxz8",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Inquiry Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1o9tJ70loA81prhjIS0X0AdIULYHQA6xpEpu49c9oxz8/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {
+            "Timestamp": "="
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Customer Email",
+              "displayName": "Customer Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Subject",
+              "displayName": "Subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Category",
+              "displayName": "Category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Priority",
+              "displayName": "Priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Sentiment",
+              "displayName": "Sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Topics",
+              "displayName": "Topics",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Summary",
+              "displayName": "Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Response Status",
+              "displayName": "Response Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Message ID",
+              "displayName": "Message ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "context",
+              "displayName": "context",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "classification",
+              "displayName": "classification",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "generatedResponse",
+              "displayName": "generatedResponse",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "processedAt",
+              "displayName": "processedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "6fc723ab-89df-4e6c-b459-7e6d17377d78",
+      "name": "Google Sheets - Log Inquiry",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1760,
+        320
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "HMz6UdPG2jdyM31k",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "high-priority-check",
+              "leftValue": "={{ $json.classification.priority }}",
+              "rightValue": "HIGH",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6aa51d3d-99a1-4315-9a43-7fadd78f6f02",
+      "name": "If High Priority",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1952,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "support-manager@yourcompany.com",
+        "subject": "=🚨 HIGH PRIORITY: {{ $json.email.subject }}",
+        "message": "=A high-priority customer inquiry requires immediate attention.\n\n---\nCUSTOMER DETAILS:\nFrom: {{ $json.email.from }}\nSubject: {{ $json.email.subject }}\nReceived: {{ $json.email.receivedAt }}\n\n---\nAI CLASSIFICATION:\nCategory: {{ $json.classification.category }}\nSentiment: {{ $json.classification.sentiment }}\nTopics: {{ $json.classification.topics?.join(', ') || 'N/A' }}\n\n---\nSUMMARY:\n{{ $json.classification.summary }}\n\n---\nORIGINAL MESSAGE:\n{{ $json.email.body }}\n\n---\nAI DRAFT RESPONSE:\n{{ $json.generatedResponse }}\n\n---\nPlease review and approve the draft response or handle this inquiry personally.\n\nThis is an automated notification from the AI Customer Inquiry Processor.",
+        "options": {}
+      },
+      "id": "6cf520a5-2920-4d81-921c-30c5beafb145",
+      "name": "Gmail - Alert Manager",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2208,
+        272
+      ],
+      "webhookId": "85588d3d-f0d4-40c0-b174-2a7fccc07a93",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "rHCV1HlRrfN4uNk6",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "0645cdd6-9bcd-4f88-940c-213a7c21c725",
+      "name": "Standard Processing Complete",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2192,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "markAsRead",
+        "messageId": "={{ $json.email.messageId }}"
+      },
+      "id": "424430dd-056b-4c81-9029-86744b588d89",
+      "name": "Gmail - Mark as Read]",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1328,
+        448
+      ],
+      "webhookId": "2ab73579-0ba0-4ff9-85f1-d91657e6b8e3",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "rHCV1HlRrfN4uNk6",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "#all-aiagents",
+          "mode": "name"
+        },
+        "text": "={{ $json.generatedResponse }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        2160,
+        -16
+      ],
+      "id": "d1b1504d-6d61-45ff-94c1-802df73f7c1a",
+      "name": "Send a message",
+      "webhookId": "59a4cd19-c8ed-43b1-bd85-da235a747d6c",
+      "credentials": {
+        "slackApi": {
+          "id": "PDvLu7rKGKwNrWH8",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "📧 SECTION 1-2: EMAIL INGESTION & RAG DATA RETRIEVAL\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nOVERVIEW\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nThis section monitors Gmail for new customer inquiries \nand retrieves context data for AI processing.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nNODES\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n- Gmail Trigger: Polls inbox every 5 min for UNREAD emails\n- Read Knowledge Base: Company policies & procedures\n- Read FAQ: Pre-written answers to common questions\n- Read Products: Product catalog with pricing\n- Merge All Context: Combines all 3 data sources\n- Prepare RAG Context: Structures data for AI\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nOUTPUT\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nStructured JSON with email details + RAG context\n\nAuthor: arni.nemeth1980",
+        "height": 608,
+        "width": 432
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -176,
+        -624
+      ],
+      "typeVersion": 1,
+      "id": "59aef48f-de99-4eaa-b7a0-d961d96f4fdf",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "🤖 SECTION 3-4: AI CLASSIFICATION & SPAM FILTER\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nOVERVIEW\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nAI analyzes the email and classifies it by category,\npriority, and sentiment. Spam is filtered out.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nCLASSIFICATION CATEGORIES\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n- PRODUCT_INQUIRY - Questions about products/pricing\n- SUPPORT_REQUEST - Technical issues/complaints\n- ORDER_STATUS - Shipping/delivery questions\n- GENERAL_QUESTION - General info requests\n- PARTNERSHIP - Business proposals\n- SPAM - Filtered out (no response)\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nPRIORITY & SENTIMENT\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nPriority: HIGH | MEDIUM | LOW\nSentiment: POSITIVE | NEUTRAL | NEGATIVE\n\nModel: GPT-4o-mini | Cost: ~$0.0005/classification\n\nAuthor: arni.nemeth1980",
+        "height": 672,
+        "width": 432
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        400,
+        -624
+      ],
+      "typeVersion": 1,
+      "id": "c990f83e-07d3-406d-a7ca-5cbc012620fb",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "✉️ SECTION 5-6: AI RESPONSE & OUTPUT ACTIONS\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nOVERVIEW\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nAI generates professional response using RAG context.\nMultiple output actions run in PARALLEL.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nOUTPUT ACTIONS (PARALLEL)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📧 Gmail Draft - Creates reply for human review\n📄 Google Docs - Generates case report document\n📊 Google Sheets - Logs inquiry for analytics\n💬 Slack - Sends team notification\n✓ Mark as Read - Prevents duplicate processing\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nAI RESPONSE FEATURES\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n- Answers ALL customer questions (numbered)\n- Uses FAQ/KB data (no hallucination)\n- Matches tone to sentiment\n- Professional formatting\n\nModel: GPT-4o-mini | Cost: ~$0.002/response\n\nAuthor: arni.nemeth1980",
+        "height": 672,
+        "width": 432
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1456,
+        -640
+      ],
+      "typeVersion": 1,
+      "id": "34810d93-74a6-40ae-8e01-80a16ac4fdca",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "🚨 SECTION 7-9: PRIORITY ROUTING & ESCALATION\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nOVERVIEW\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nRoutes inquiries based on priority level.\nHIGH priority triggers immediate manager alerts.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nROUTING LOGIC\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nIF Priority = HIGH:\n  → 📧 Email alert to manager\n  → 💬 Urgent Slack notification\n  \nIF Priority = MEDIUM/LOW:\n  → ✅ Standard processing complete\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nESCALATION TRIGGERS\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n- Angry/frustrated customers\n- Order issues > 48 hours\n- Payment/refund problems\n- Urgent requests\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nWORKFLOW COMPLETE ✅\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nTotal cost per inquiry: ~$0.003\nResponse time: < 5 minutes\n\nAuthor: arni.nemeth1980",
+        "height": 800,
+        "width": 432
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1904,
+        -640
+      ],
+      "typeVersion": 1,
+      "id": "ec5602fa-daf2-406d-ae00-f2aee79f7e75",
+      "name": "Sticky Note3"
+    }
+  ],
+  "pinData": {
+    "Gmail - Mark as Read]": [
+      {
+        "json": {
+          "name": "First item",
+          "code": 1
+        }
+      },
+      {
+        "json": {
+          "name": "Second item",
+          "code": 2
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Gmail Trigger - New Inquiry": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Read Knowledge Base",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google Sheets - Read FAQ",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google Sheets - Read Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Read Knowledge Base": {
+      "main": [
+        [
+          {
+            "node": "Merge All Context Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Read FAQ": {
+      "main": [
+        [
+          {
+            "node": "Merge All Context Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge All Context Data": {
+      "main": [
+        [
+          {
+            "node": "Prepare RAG Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare RAG Context": {
+      "main": [
+        [
+          {
+            "node": "OpenAI - Classify Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - Classify Email": {
+      "main": [
+        [
+          {
+            "node": "Parse Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Classification": {
+      "main": [
+        [
+          {
+            "node": "Filter Spam",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Spam": {
+      "main": [
+        [
+          {
+            "node": "OpenAI - Generate Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - Generate Response": {
+      "main": [
+        [
+          {
+            "node": "Prepare Final Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Final Output": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Mark as Read]",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Gmail - Create Draft Response",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google Docs - Generate Case Report",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google Sheets - Log Inquiry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Docs - Generate Case Report": {
+      "main": [
+        []
+      ]
+    },
+    "Google Sheets - Log Inquiry": {
+      "main": [
+        [
+          {
+            "node": "If High Priority",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If High Priority": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Alert Manager",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Standard Processing Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Mark as Read]": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "53e0c1ee-0ec2-4619-93bc-4e9544f75af3",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "cd93a34108e55d377e7be7a09afb339d52eaa01006aedd0402ecf40aff240be4"
+  },
+  "id": "VjYGdZiXMTjeJu7n",
+  "tags": [
+    {
+      "updatedAt": "2025-12-24T14:17:04.338Z",
+      "createdAt": "2025-12-24T14:17:04.338Z",
+      "id": "64Efe5loLPduUT4F",
+      "name": "Google Workspace"
+    },
+    {
+      "updatedAt": "2025-12-24T14:17:04.287Z",
+      "createdAt": "2025-12-24T14:17:04.287Z",
+      "id": "DeKF0DTu0bOVlbwK",
+      "name": "Customer Service"
+    },
+    {
+      "updatedAt": "2025-12-24T14:17:04.121Z",
+      "createdAt": "2025-12-24T14:17:04.121Z",
+      "id": "fa17lw3vuR2Wn8sg",
+      "name": "AI Agent"
+    },
+    {
+      "updatedAt": "2025-12-24T14:17:04.320Z",
+      "createdAt": "2025-12-24T14:17:04.320Z",
+      "id": "y0LN45ajBtrc6qwk",
+      "name": "RAG"
+    }
+  ]
+}
